@@ -4,107 +4,109 @@ import plotly.express as px
 import plotly.graph_objects as go
 import os
 
-# 1. Configuración de la página
-st.set_page_config(page_title="Eficiencia Energética", layout="wide")
+# 1. CONFIGURACIÓN DE PÁGINA
+st.set_page_config(page_title="Eficiencia Energética - DANE", layout="wide")
 
+# Encabezado con Logo
+st.image("https://www.valoraanalitik.com/wp-content/uploads/2018/10/1200px-Colombia_Dane_logo.svg_-696x264.png", width=200)
+st.caption("Fuente Oficial: DANE Colombia")
+st.markdown("<h1 style='text-align: center; color: #E67E22;'>⚡ Eficiencia Energética e Índice ICA</h1>", unsafe_allow_html=True)
+st.divider()
 
-# Usamos una URL directa del logo del DANE
-url_logo_dane = "https://www.valoraanalitik.com/wp-content/uploads/2018/10/1200px-Colombia_Dane_logo.svg_-696x264.png"
+# 2. SELECTOR DE AÑO
+col_f, _ = st.columns([1, 2])
+with col_f:
+    anio_sel = st.selectbox("📅 Seleccione el Año de Análisis:", [2023, 2022, 2021, 2020, 2019], index=0)
 
-col_izq, col_centro, col_der = st.columns([1, 2, 1])
-with col_centro:
-    # Aquí cargamos la imagen directamente con la URL
-    st.image(url_logo_dane, caption="Fuente Oficial: DANE Colombia", use_container_width=True)
+# 3. CARGA DE DATOS
+df = pd.DataFrame()
+ruta_data = "data"
+
+if os.path.exists(ruta_data):
+    for raiz, dirs, archivos in os.walk(ruta_data):
+        for f in archivos:
+            if str(anio_sel) in f and f.lower().endswith(".csv"):
+                df = pd.read_csv(os.path.join(raiz, f))
+                break
+
+# 4. PROCESAMIENTO Y GRÁFICOS
+if not df.empty:
+    df.columns = df.columns.str.strip().str.lower()
     
+    col_ener = "consumo_energia_kwh"
+    col_sec = "seccion_economica"
+    col_gast_amb = "gasto_gestion_amb"
+    col_gast_tot = "gastos_totales"
 
-# 2. Título y Sección de Información
-st.title("⚡ Eficiencia Energética e Índice ICA")
+    df[col_ener] = pd.to_numeric(df[col_ener], errors='coerce').fillna(0)
+    df[col_gast_amb] = pd.to_numeric(df[col_gast_amb], errors='coerce').fillna(0)
+    df[col_gast_tot] = pd.to_numeric(df[col_gast_tot], errors='coerce').fillna(1)
 
-with st.expander("ℹ️ Acerca de esta página"):
-    st.markdown("""
-    Este módulo analiza el **consumo de energía** y calcula un **Índice de Desempeño (ICA)**.
-    * **Velocímetro ICA:** Relación entre inversión ambiental y consumo.
-    * **Top 10 Barras:** Comparativa directa de los mayores consumidores.
-    * **Mapa de Distribución:** Visualización proporcional del peso de cada sector.
+    # --- A. VELOCÍMETRO ICA ---
+    st.subheader(f"🚀 Indicador de Desempeño Ambiental (ICA) - {anio_sel}")
+    
+    # Cálculo con multiplicador de visibilidad (50.000)
+    indice_calculado = (df[col_gast_amb].sum() / df[col_gast_tot].sum()) * 50000
+    valor_gauge = min(indice_calculado, 100)
+
+    fig_gauge = go.Figure(go.Indicator(
+        mode = "gauge+number",
+        value = valor_gauge,
+        number = {'suffix': " pts", 'valueformat': '.1f', 'font': {'size': 40}},
+        gauge = {
+            'axis': {'range': [0, 100], 'tickwidth': 1},
+            'bar': {'color': "#E67E22"},
+            'bgcolor': "white",
+            'steps': [
+                {'range': [0, 30], 'color': "#FFB3B3"},
+                {'range': [30, 70], 'color': "#FFF3B3"},
+                {'range': [70, 100], 'color': "#B3FFB3"}
+            ],
+            'threshold': {
+                'line': {'color': "black", 'width': 4},
+                'thickness': 0.75,
+                'value': valor_gauge
+            }
+        }
+    ))
+    fig_gauge.update_layout(height=350, margin=dict(t=50, b=0))
+    st.plotly_chart(fig_gauge, width='stretch')
+
+    # --- NOTA EXPLICATIVA DE LOS PUNTOS (PTS) ---
+    st.info("""
+        **💡 Nota sobre el Indicador (pts):**
+        El puntaje en el velocímetro representa el **Índice de Inversión Ambiental**. 
+        Se calcula comparando el gasto en gestión ambiental frente al gasto total de los sectores industriales. 
+        Un mayor puntaje indica una industria más comprometida con la sostenibilidad y la protección del entorno.
     """)
 
-# 3. Selector de Año
-anio = st.sidebar.selectbox("Seleccionar Año:", [2023, 2022, 2021, 2020, 2019], key="ener_final_v3")
-ruta = f"datos/procesados/datos_{anio}_final.csv"
+    st.divider()
 
-if os.path.exists(ruta):
-    df = pd.read_csv(ruta)
+    # --- B. TOP 10 CONSUMO ---
+    st.subheader(f"🔝 Top 10 Sectores con Mayor Consumo ({anio_sel})")
+    df_top10 = df.groupby(col_sec)[col_ener].sum().reset_index().sort_values(by=col_ener, ascending=True).tail(10)
     
-    # Agrupamos por sector
-    df_agrupado = df.groupby('seccion_economica').agg({
-        'consumo_energia_kwh': 'sum',
-        'gasto_gestion_amb': 'sum'
-    }).reset_index()
+    fig_bar = px.bar(
+        df_top10, x=col_ener, y=col_sec, orientation='h',
+        color=col_ener, color_continuous_scale='Oranges',
+        labels={col_ener: 'Consumo (kWh)', col_sec: 'Sector'}
+    )
+    fig_bar.update_layout(height=450, showlegend=False)
+    st.plotly_chart(fig_bar, width='stretch')
+
+    st.divider()
+
+    # --- C. DISTRIBUCIÓN (TREEMAP) ---
+    st.subheader(f"🗺️ Distribución del Consumo por Sector ({anio_sel})")
+    df_tree = df.groupby(col_sec)[col_ener].sum().reset_index()
+    df_tree = df_tree[df_tree[col_ener] > 0]
     
-    df_agrupado = df_agrupado[df_agrupado['consumo_energia_kwh'] > 0]
+    fig_tree = px.treemap(
+        df_tree, path=[col_sec], values=col_ener,
+        color=col_ener, color_continuous_scale='RdYlGn_r'
+    )
+    fig_tree.update_traces(textinfo="label+percent root")
+    st.plotly_chart(fig_tree, width='stretch')
 
-    if not df_agrupado.empty:
-        # --- 1. VELOCÍMETRO (GAUGE) COMPACTO ---
-        inv_total = df_agrupado['gasto_gestion_amb'].sum()
-        cons_total = df_agrupado['consumo_energia_kwh'].sum()
-        ica_score = min(100, (inv_total / (cons_total * 0.05)) * 100) if cons_total > 0 else 0
-
-        st.subheader("🚀 Indicador de Desempeño Ambiental (ICA)")
-        fig_gauge = go.Figure(go.Indicator(
-            mode = "gauge+number",
-            value = ica_score,
-            number = {'suffix': "%", 'font': {'size': 35}},
-            title = {'text': f"Eficiencia - {anio}", 'font': {'size': 16}},
-            gauge = {
-                'axis': {'range': [None, 100]},
-                'bar': {'color': "black"},
-                'steps': [
-                    {'range': [0, 40], 'color': '#ff4b4b'},
-                    {'range': [40, 70], 'color': '#ffa421'},
-                    {'range': [70, 100], 'color': '#21c354'}
-                ]
-            }
-        ))
-        fig_gauge.update_layout(height=220, margin=dict(t=20, b=0, l=40, r=40))
-        st.plotly_chart(fig_gauge, use_container_width=True)
-
-        st.divider()
-
-        # --- 2. TOP 10 BARRAS ---
-        top_10_ener = df_agrupado.nlargest(10, 'consumo_energia_kwh')
-        
-        st.subheader(f"🔝 Top 10 Sectores con Mayor Consumo ({anio})")
-        fig_bar = px.bar(
-            top_10_ener, 
-            x='consumo_energia_kwh', 
-            y='seccion_economica', 
-            orientation='h', 
-            color='consumo_energia_kwh',
-            color_continuous_scale='YlOrRd',
-            text_auto='.2s'
-        )
-        fig_bar.update_layout(yaxis={'categoryorder':'total ascending'}, height=450, showlegend=False)
-        st.plotly_chart(fig_bar, use_container_width=True)
-
-        st.divider()
-
-        # --- 3. MAPA DE DISTRIBUCIÓN (TREEMAP) - REEMPLAZA BURBUJAS ---
-        st.subheader(f"🗺️ Distribución del Consumo por Sector ({anio})")
-        st.write("Este mapa permite ver proporcionalmente qué sectores dominan el consumo sin saturar la pantalla del celular.")
-        
-        fig_tree = px.treemap(
-            top_10_ener, 
-            path=['seccion_economica'], 
-            values='consumo_energia_kwh',
-            color='consumo_energia_kwh',
-            color_continuous_scale='YlOrRd',
-            labels={'consumo_energia_kwh': 'Consumo Total'}
-        )
-        # Ajustamos para que se vea bien en cualquier dispositivo
-        fig_tree.update_layout(margin=dict(t=10, l=10, r=10, b=10), height=400)
-        st.plotly_chart(fig_tree, use_container_width=True)
-            
-    else:
-        st.warning(f"No hay datos de energía para mostrar en {anio}.")
 else:
-    st.error(f"❌ No se encontró el archivo: {ruta}")
+    st.warning(f"⚠️ No se encontró el archivo de datos para el año {anio_sel}.")

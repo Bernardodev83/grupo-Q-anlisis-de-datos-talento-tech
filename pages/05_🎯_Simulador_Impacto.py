@@ -1,110 +1,74 @@
 import streamlit as st
 import pandas as pd
-import plotly.graph_objects as go
-import os
+from utils.conexion import obtener_conexion
+from sqlalchemy import text
 
-# 1. Configuración de la página
-st.set_page_config(page_title="Simulador de Impacto", layout="wide")
+st.set_page_config(page_title="Simulador Ambiental", layout="wide")
 
-# Usamos una URL directa del logo del DANE
-url_logo_dane = "https://www.valoraanalitik.com/wp-content/uploads/2018/10/1200px-Colombia_Dane_logo.svg_-696x264.png"
+st.title("🧮 Simulador de Impacto Ambiental")
+st.info("Proyecta el ahorro y la eficiencia basándote en los datos reales de MariaDB.")
 
-col_izq, col_centro, col_der = st.columns([1, 2, 1])
-with col_centro:
-    # Aquí cargamos la imagen directamente con la URL
-    st.image(url_logo_dane, caption="Fuente Oficial: DANE Colombia", use_container_width=True)
+# 1. CONEXIÓN
+engine = obtener_conexion()
 
+if engine:
+    try:
+        # 2. OBTENER PROMEDIOS REALES DE LA DB (Para que la simulación sea realista)
+        with engine.connect() as con:
+            query_avg = text("""
+                SELECT AVG(consumo_energia_kwh) as avg_energia, 
+                       AVG(consumo_agua_m3) as avg_agua 
+                FROM indicadores_ambientales
+            """)
+            res = con.execute(query_avg).fetchone()
+            # Si la DB está vacía, usamos valores por defecto
+            avg_energia_db = float(res[0]) if res[0] else 5000.0
+            avg_agua_db = float(res[1]) if res[1] else 200.0
 
+        st.success(f"📈 Base de simulación actualizada según el promedio histórico de la base de datos.")
 
+        # --- INTERFAZ DEL SIMULADOR ---
+        col1, col2 = st.columns(2)
 
-# 2. Título e Instrucciones
-st.title("🎯 Simulador de Eco-Eficiencia")
-st.markdown("""
-Esta herramienta permite proyectar el **ahorro económico** potencial si los sectores industriales implementan estrategias de optimización de recursos.
-""")
+        with col1:
+            st.subheader("⚙️ Configuración de la Empresa")
+            sector = st.selectbox("Sector Industrial:", ["Manufactura", "Servicios", "Comercio", "Minería"])
+            consumo_actual_e = st.number_input("Consumo Energía Actual (kWh):", value=avg_energia_db)
+            consumo_actual_a = st.number_input("Consumo Agua Actual (m3):", value=avg_agua_db)
 
-# 3. Sidebar: Configuración del Escenario
-st.sidebar.header("⚙️ Configuración del Escenario")
-anio = st.sidebar.selectbox("Año de Referencia:", [2023, 2022, 2021, 2020, 2019], key="sim_year")
+        with col2:
+            st.subheader("🎯 Metas de Reducción")
+            meta_e = st.slider("% Reducción Energía:", 0, 50, 15)
+            meta_a = st.slider("% Reducción Agua:", 0, 50, 10)
 
-st.sidebar.subheader("📉 Metas de Ahorro")
-ahorro_agua = st.sidebar.slider("Ahorro en Agua (%)", 0, 50, 10)
-ahorro_ener = st.sidebar.slider("Ahorro en Energía (%)", 0, 50, 15)
-
-# Costos estimados (puedes ajustarlos según la realidad del mercado)
-costo_m3 = st.sidebar.number_input("Costo promedio m³ Agua ($)", value=4500)
-costo_kwh = st.sidebar.number_input("Costo promedio kWh Energía ($)", value=800)
-
-# 4. Carga de Datos
-ruta = f"datos/procesados/datos_{anio}_final.csv"
-
-if os.path.exists(ruta):
-    df = pd.read_csv(ruta)
-    
-    # Cálculos actuales
-    total_agua_act = df['consumo_agua_m3'].sum()
-    total_ener_act = df['consumo_energia_kwh'].sum()
-    
-    # Proyecciones
-    m3_ahorrados = total_agua_act * (ahorro_agua / 100)
-    kwh_ahorrados = total_ener_act * (ahorro_ener / 100)
-    
-    dinero_ahorro_agua = m3_ahorrados * costo_m3
-    dinero_ahorro_ener = kwh_ahorrados * costo_kwh
-    ahorro_total = dinero_ahorro_agua + dinero_ahorro_ener
-
-    # --- KPI'S DE IMPACTO ---
-    st.subheader(f"📊 Resultados del Simulador - Año {anio}")
-    c1, c2, c3 = st.columns(3)
-    
-    with c1:
-        st.metric("Agua Recuperable", f"{m3_ahorrados:,.0f} m³", f"-{ahorro_agua}%", delta_color="normal")
-    with c2:
-        st.metric("Energía Optimizada", f"{kwh_ahorrados:,.0f} kWh", f"-{ahorro_ener}%", delta_color="normal")
-    with c3:
-        st.metric("Ahorro Económico Estimado", f"$ {ahorro_total:,.0f}", "Potencial", delta_color="off")
-
-    st.divider()
-
-    # --- GRÁFICO DE IMPACTO ECONÓMICO ---
-    st.subheader("💰 Impacto en la Estructura de Costos")
-    
-    # Datos para el gráfico comparativo
-    categorias = ['Situación Actual', 'Con Optimización']
-    costo_actual = (total_agua_act * costo_m3) + (total_ener_act * costo_kwh)
-    costo_proyectado = costo_actual - ahorro_total
-    
-    fig_impacto = go.Figure()
-    fig_impacto.add_trace(go.Bar(
-        name='Gasto Proyectado',
-        x=categorias,
-        y=[costo_actual, costo_proyectado],
-        marker_color=['#95a5a6', '#27ae60'],
-        text=[f"$ {costo_actual:,.0f}", f"$ {costo_proyectado:,.0f}"],
-        textposition='auto'
-    ))
-
-    fig_impacto.update_layout(
-        title="Reducción de Gastos Operativos (Agua + Energía)",
-        yaxis_title="Pesos Colombianos ($)",
-        template="plotly_white",
-        height=500
-    )
-    
-    st.plotly_chart(fig_impacto, use_container_width=True)
-
-    # --- TABLA POR SECTORES ---
-    with st.expander("🔍 Ver detalle de ahorro por Sector Económico"):
-        df_sectores = df.groupby('seccion_economica').agg({
-            'consumo_agua_m3': 'sum',
-            'consumo_energia_kwh': 'sum'
-        }).reset_index()
+        # --- CÁLCULOS ---
+        ahorro_e = consumo_actual_e * (meta_e / 100)
+        ahorro_a = consumo_actual_a * (meta_a / 100)
         
-        df_sectores['Ahorro $ Agua'] = df_sectores['consumo_agua_m3'] * (ahorro_agua/100) * costo_m3
-        df_sectores['Ahorro $ Energía'] = df_sectores['consumo_energia_kwh'] * (ahorro_ener/100) * costo_kwh
-        df_sectores['Ahorro Total Potencial'] = df_sectores['Ahorro $ Agua'] + df_sectores['Ahorro $ Energía']
-        
-        st.dataframe(df_sectores.sort_values('Ahorro Total Potencial', ascending=False), use_container_width=True)
+        # Supongamos un costo promedio (puedes ajustarlo)
+        costo_kwh = 650 
+        dinero_ahorrado = ahorro_e * costo_kwh
 
+        st.divider()
+
+        # --- RESULTADOS ---
+        st.subheader("🚀 Proyección de Resultados")
+        res1, res2, res3 = st.columns(3)
+        
+        res1.metric("Energía a Ahorrar", f"{ahorro_e:,.2f} kWh", f"-{meta_e}%", delta_color="normal")
+        res2.metric("Agua a Ahorrar", f"{ahorro_a:,.2f} m3", f"-{meta_a}%", delta_color="normal")
+        res3.metric("Ahorro Estimado ($)", f"$ {dinero_ahorrado:,.0f}", help="Basado en costo promedio de kWh")
+
+        # Gráfico comparativo
+        st.write("### Comparativa: Actual vs Meta")
+        data_sim = pd.DataFrame({
+            'Concepto': ['Energía (kWh)', 'Agua (m3)'],
+            'Actual': [consumo_actual_e, consumo_actual_a],
+            'Meta': [consumo_actual_e - ahorro_e, consumo_actual_a - ahorro_a]
+        })
+        st.bar_chart(data_sim.set_index('Concepto'))
+
+    except Exception as e:
+        st.error(f"❌ Error al cargar datos para el simulador: {e}")
 else:
-    st.error(f"No se encontraron datos para el año {anio}. Por favor, procesa los archivos primero.")
+    st.error("❌ No hay conexión con MariaDB para obtener los promedios.")

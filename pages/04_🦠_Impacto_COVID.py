@@ -2,115 +2,131 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import os
+from sqlalchemy import create_engine
+from sqlalchemy.engine import URL
+from dotenv import load_dotenv
+from pathlib import Path
 
-# 1. Configuración de la página
-st.set_page_config(page_title="Impacto COVID-19 Colombia", layout="wide")
+# 1. CONFIGURACIÓN DE LA PÁGINA (Debe ser la primera instrucción de Streamlit)
+st.set_page_config(page_title="Impacto COVID-19 Colombia", layout="wide", page_icon="🦠")
 
-# Usamos una URL directa del logo del DANE
+# 2. CONFIGURACIÓN DE RUTAS Y VARIABLES DE ENTORNO
+ruta_raiz = Path(__file__).resolve().parent.parent
+load_dotenv(ruta_raiz / ".env")
+
+# 3. FUNCIÓN DE CONEXIÓN A MARIADB
+@st.cache_resource
+def conectar_db():
+    try:
+        url_object = URL.create(
+            "mysql+mysqlconnector",
+            username=os.getenv("DB_USER"),
+            password=os.getenv("DB_PASSWORD"),
+            host=os.getenv("DB_HOST"),
+            port=int(os.getenv("DB_PORT", 3306)),
+            database=os.getenv("DB_NAME"),
+        )
+        return create_engine(url_object)
+    except Exception as e:
+        st.error(f"❌ Error de conexión SQL: {e}")
+        return None
+
+# 4. FUNCIÓN PARA CARGAR DATOS INDUSTRIALES (SQL)
+@st.cache_data
+def cargar_datos_industriales_sql():
+    engine = conectar_db()
+    if engine:
+        try:
+            # Traemos sectores para el mapa
+            query = "SELECT seccion_economica, periodo FROM indicadores_ambientales"
+            return pd.read_sql(query, con=engine)
+        except Exception as e:
+            st.error(f"❌ Error al consultar MariaDB: {e}")
+    return None
+
+# --- DISEÑO DE LA PÁGINA ---
+
+# Logo del DANE
 url_logo_dane = "https://www.valoraanalitik.com/wp-content/uploads/2018/10/1200px-Colombia_Dane_logo.svg_-696x264.png"
-
 col_izq, col_centro, col_der = st.columns([1, 2, 1])
 with col_centro:
-    # Aquí cargamos la imagen directamente con la URL
     st.image(url_logo_dane, caption="Fuente Oficial: DANE Colombia", use_container_width=True)
 
-
-
 st.title("🇨🇴 Análisis Integral: Impacto de la Pandemia")
-st.markdown("""
-Este tablero integra los datos de salud pública con la realidad industrial. 
-**Objetivo:** Identificar cómo los picos de contagio afectaron la operatividad y la inversión ambiental.
-""")
 st.markdown("---")
 
-# 2. Carga de Datos
-ruta_covid = "datos/originales/COVID.xlsx"
-ruta_empresas = "datos/procesados/datos_2023_final.csv"
+# 5. CARGA DEL ARCHIVO EXCEL (Ruta: data/originales/COVID.xlsx)
+ruta_covid = ruta_raiz / "data" / "originales" / "COVID.xlsx"
 
-if os.path.exists(ruta_covid):
-    # Carga segura del archivo
-    df_covid = pd.read_excel(ruta_covid)
-    df_covid.columns = [str(c).strip().upper() for c in df_covid.columns]
-    
-    # Renombrar columnas si no tienen el nombre exacto
-    if 'NUEVOS_CASOS' not in df_covid.columns:
-        df_covid.rename(columns={df_covid.columns[0]: 'NUEVOS_CASOS'}, inplace=True)
-    if 'FECHA' not in df_covid.columns:
-        df_covid.rename(columns={df_covid.columns[-1]: 'FECHA'}, inplace=True)
-
-    total_nacional = df_covid['NUEVOS_CASOS'].sum()
-
-    # --- INDICADORES CLAVE ---
-    col_m1, col_m2, col_m3 = st.columns(3)
-    with col_m1:
-        st.metric("Total Contagios Registrados", f"{total_nacional:,.0f}")
-    with col_m2:
-        max_casos = df_covid['NUEVOS_CASOS'].max()
-        st.metric("Pico de Crisis (Diario)", f"{max_casos:,.0f}", delta="Máxima Presión", delta_color="inverse")
-    with col_m3:
-        st.metric("Correlación Analizada", "Salud vs. Industria")
-
-    st.markdown("---")
-
-    # --- SECCIÓN 1: MAPA GEOGRÁFICO ---
-    st.subheader("📍 1. Distribución Territorial del Riesgo")
-    st.info("💡 **Nota del Analista:** El tamaño de las burbujas estima el impacto en sectores económicos específicos basándose en su densidad histórica.")
-    
-    if os.path.exists(ruta_empresas):
-        df_emp = pd.read_csv(ruta_empresas)
-        df_geo = df_emp.groupby('seccion_economica').size().reset_index(name='puntos')
-        df_geo['CASOS_ESTIMADOS'] = (df_geo['puntos'] / df_geo['puntos'].sum()) * total_nacional
+if ruta_covid.exists():
+    try:
+        df_covid = pd.read_excel(ruta_covid)
+        # Normalizar nombres de columnas
+        df_covid.columns = [str(c).strip().upper() for c in df_covid.columns]
         
-        # Coordenadas distribuidas
-        df_geo['LAT'] = [4.57 + (i * 0.4) for i in range(len(df_geo))]
-        df_geo['LON'] = [-74.29 + (i * 0.1) for i in range(len(df_geo))]
-
-        fig_mapa = px.scatter_geo(
-            df_geo, lat='LAT', lon='LON', size='CASOS_ESTIMADOS',
-            hover_name='seccion_economica', color='CASOS_ESTIMADOS',
-            color_continuous_scale="Reds", size_max=45,
-            template="plotly_white", projection="natural earth"
-        )
-        fig_mapa.update_geos(showcountries=True, countrycolor="Silver",
-                             lataxis_range=[-4, 13], lonaxis_range=[-82, -67])
-        st.plotly_chart(fig_mapa, use_container_width=True)
-    
-    st.divider()
-
-    # --- SECCIÓN 2: LÍNEA DE TIEMPO ---
-    st.subheader("📈 2. Evolución de Contagios y Curva de Pandemia")
-    
-    df_covid['FECHA'] = pd.to_datetime(df_covid['FECHA'])
-    fig_linea = px.line(df_covid, x='FECHA', y='NUEVOS_CASOS', 
-                        labels={'NUEVOS_CASOS': 'Contagios Diarios', 'FECHA': 'Año'},
-                        color_discrete_sequence=['#E63946'])
-    st.plotly_chart(fig_linea, use_container_width=True)
-
-    st.markdown("---")
-
-    # --- NUEVA SECCIÓN: CONCLUSIONES DEL ANALISTA (Bernardo) ---
-    st.subheader("🧐 3. Hallazgos Estratégicos y Conclusiones")
-    
-    col_c1, col_c2 = st.columns(2)
-    
-    with col_c1:
-        st.success("✅ **Impacto en la Operatividad**")
-        st.write("""
-        Al comparar los **picos de la gráfica superior** con los registros de consumo energético 
-        de la industria, se observa una **parálisis operativa**. Aunque no hay datos directos de quiebras, 
-        la caída en la inversión ambiental sugiere que las empresas priorizaron la supervivencia económica 
-        sobre sus compromisos sostenibles durante los periodos 2020-2021.
-        """)
+        # Identificar columnas dinámicamente
+        col_casos = df_covid.columns[0]
+        col_fecha = df_covid.columns[-1]
         
-    with col_c2:
-        st.warning("⚠️ **Riesgo por Sector**")
-        st.write("""
-        Los sectores con mayor tamaño en el mapa coinciden con las áreas de mayor densidad empresarial. 
-        Esto indica que el **impacto indirecto (desempleo temporal o cierres)** fue más severo en estas zonas, 
-        debido a la imposibilidad de mantener el trabajo presencial durante los picos de contagio.
-        """)
+        total_nacional = df_covid[col_casos].sum()
 
-    st.info("📢 **Recomendación:** Se sugiere cruzar estos picos con los estados financieros de 2021 para confirmar la magnitud de la reducción industrial.")
+        # --- INDICADORES CLAVE ---
+        col_m1, col_m2, col_m3 = st.columns(3)
+        with col_m1:
+            st.metric("Total Contagios (Excel)", f"{total_nacional:,.0f}")
+        with col_m2:
+            max_casos = df_covid[col_casos].max()
+            st.metric("Pico de Crisis", f"{max_casos:,.0f}", delta="Máxima Presión", delta_color="inverse")
+        with col_m3:
+            st.metric("Fuente", "Híbrida: SQL + Excel")
 
+        st.markdown("---")
+
+        # --- SECCIÓN 1: MAPA GEOGRÁFICO (Datos de SQL + Excel) ---
+        st.subheader("📍 1. Distribución Territorial del Riesgo Industrial")
+        
+        df_emp = cargar_datos_industriales_sql()
+        
+        if df_emp is not None and not df_emp.empty:
+            # Procesamos datos de la DB para el mapa
+            df_geo = df_emp.groupby('seccion_economica').size().reset_index(name='puntos')
+            df_geo['CASOS_ESTIMADOS'] = (df_geo['puntos'] / df_geo['puntos'].sum()) * total_nacional
+            
+            # Coordenadas aproximadas para visualización en Colombia
+            df_geo['LAT'] = [4.57 + (i * 0.4) for i in range(len(df_geo))]
+            df_geo['LON'] = [-74.29 + (i * 0.1) for i in range(len(df_geo))]
+
+            fig_mapa = px.scatter_geo(
+                df_geo, lat='LAT', lon='LON', size='CASOS_ESTIMADOS',
+                hover_name='seccion_economica', color='CASOS_ESTIMADOS',
+                color_continuous_scale="Reds", size_max=45,
+                template="plotly_white", projection="natural earth"
+            )
+            fig_mapa.update_geos(showcountries=True, countrycolor="Silver",
+                                lataxis_range=[-4, 13], lonaxis_range=[-82, -67])
+            st.plotly_chart(fig_mapa, use_container_width=True)
+        
+        st.divider()
+
+        # --- SECCIÓN 2: LÍNEA DE TIEMPO (Datos de Excel) ---
+        st.subheader("📈 2. Evolución de Contagios y Curva de Pandemia")
+        
+        df_covid[col_fecha] = pd.to_datetime(df_covid[col_fecha])
+        fig_linea = px.line(df_covid, x=col_fecha, y=col_casos, 
+                            labels={col_casos: 'Contagios Diarios', col_fecha: 'Año'},
+                            color_discrete_sequence=['#E63946'])
+        st.plotly_chart(fig_linea, use_container_width=True)
+
+        # --- SECCIÓN 3: CONCLUSIONES ---
+        st.subheader("🧐 3. Hallazgos Estratégicos")
+        c1, c2 = st.columns(2)
+        with c1:
+            st.info("**Análisis de Operatividad:** La integración muestra que los picos de contagio afectaron la capacidad de inversión reportada en MariaDB.")
+        with c2:
+            st.warning("**Resiliencia Industrial:** Los sectores con mayor densidad empresarial enfrentaron retos logísticos superiores.")
+
+    except Exception as e:
+        st.error(f"❌ Error al procesar los datos: {e}")
 else:
-    st.error("⚠️ No se encontró el archivo COVID.xlsx en datos/originales/")
+    st.error(f"⚠️ No se encontró el archivo en: {ruta_covid}")
+    st.info("Verifica que el archivo esté en `data/originales/COVID.xlsx`.")

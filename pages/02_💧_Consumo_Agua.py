@@ -2,93 +2,95 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import os
+from utils.conexion import obtener_conexion
+from sqlalchemy import text
 
-# 1. Configuración de la página
-st.set_page_config(page_title="Consumo de Agua", layout="wide")
+# 1. CONFIGURACIÓN DE PÁGINA
+st.set_page_config(page_title="Análisis Hídrico - DANE", layout="wide")
 
-# Usamos una URL directa del logo del DANE
-url_logo_dane = "https://www.valoraanalitik.com/wp-content/uploads/2018/10/1200px-Colombia_Dane_logo.svg_-696x264.png"
+# Logo y Título
+st.image("https://www.valoraanalitik.com/wp-content/uploads/2018/10/1200px-Colombia_Dane_logo.svg_-696x264.png", width=200)
+st.markdown("<h1 style='color: #003366;'>💧 Gestión de Recursos Hídricos (Top 10)</h1>", unsafe_allow_html=True)
+st.caption("Fuente Oficial: DANE Colombia - Análisis de Huella Hídrica")
 
-col_izq, col_centro, col_der = st.columns([1, 2, 1])
-with col_centro:
-    # Aquí cargamos la imagen directamente con la URL
-    st.image(url_logo_dane, caption="Fuente Oficial: DANE Colombia", use_container_width=True)
+# 2. SECCIÓN INFORMATIVA
+with st.expander("ℹ️ Información del Análisis"):
+    st.write("Esta página identifica los 10 sectores industriales con mayor demanda de agua y los compara con su inversión ambiental.")
 
-# 2. Título y Sección de Información
-st.title("💧 Análisis de Recursos Hídricos")
+st.divider()
 
-with st.expander("ℹ️ Acerca de esta página"):
-    st.markdown("""
-    Esta sección analiza la **huella hídrica** de la industria capturada por la encuesta del DANE.
-    * **Propósito:** Comparar el consumo de agua en metros cúbicos (m³) frente a la inversión que hacen las empresas para ahorrar o tratar el recurso.
-    * **Variables clave:** `consumo_agua_m3` y `gasto_gestion_amb`.
-    * **Análisis:** Permite identificar sectores con alto consumo pero baja inversión en ahorro.
-    """)
+# 3. FILTRO DE AÑO (Motor inteligente)
+col_f, _ = st.columns([1, 3])
+with col_f:
+    anio_sel = st.selectbox("📅 Seleccione el Año de Análisis:", [2023, 2022, 2021, 2020, 2019], index=4)
 
-# 3. Selector de Año en la barra lateral
-# Usamos un 'key' único para evitar conflictos con otras páginas
-anio = st.sidebar.selectbox("Seleccionar Año:", [2023, 2022, 2021, 2020, 2019], key="agua_year_selector")
-ruta = f"datos/procesados/datos_{anio}_final.csv"
+# 4. CARGA DE DATOS (SQL o Carpetas)
+df = pd.DataFrame()
+engine = obtener_conexion()
 
-# 4. Carga y Visualización
-if os.path.exists(ruta):
-    # Cargamos los datos del año seleccionado
-    df = pd.read_csv(ruta)
-    
-    # Limpieza rápida: asegurar que no haya valores negativos y quitar textos vacíos
-    df = df[df['seccion_economica'].notna()]
-    
-    # --- GRÁFICO 1: TOP CONSUMIDORES (ARRIBA) ---
-    st.subheader(f"🔝 Top 10 Sectores con Mayor Consumo de Agua ({anio})")
-    
-    # Agrupamos por sector para que el gráfico sea estable en todos los años
-    resumen_sectores = df.groupby('seccion_economica').agg({
-        'consumo_agua_m3': 'sum',
-        'gasto_gestion_amb': 'sum'
-    }).reset_index()
-    
-    top_10_agua = resumen_sectores.nlargest(10, 'consumo_agua_m3')
-    
-    fig_bar = px.bar(
-        top_10_agua, 
-        x='consumo_agua_m3', 
-        y='seccion_economica', 
-        orientation='h', 
-        color='consumo_agua_m3',
+if engine:
+    try:
+        query = text("SELECT * FROM indicadores_ambientales WHERE CAST(periodo AS CHAR) = :anio")
+        df = pd.read_sql(query, engine, params={"anio": str(anio_sel)})
+    except: pass
+
+if df.empty:
+    ruta_base = "data"
+    if os.path.exists(ruta_base):
+        for raiz, dirs, archivos in os.walk(ruta_base):
+            coincidencias = [f for f in archivos if str(anio_sel) in f and f.lower().endswith(".csv")]
+            if coincidencias:
+                df = pd.read_csv(os.path.join(raiz, coincidencias[0]))
+                break
+
+# 5. RENDERIZADO DE GRÁFICOS
+if not df.empty:
+    # Limpieza de columnas
+    df.columns = [c.lower().strip() for c in df.columns]
+    col_agua = next((c for c in df.columns if 'agua' in c), df.columns[-1])
+    col_inv = 'gasto_gestion_amb' if 'gasto_gestion_amb' in df.columns else df.columns[-2]
+    col_sec = 'seccion_economica' if 'seccion_economica' in df.columns else df.columns[1]
+
+    # --- PREPARACIÓN TOP 10 ---
+    df_top10 = df.groupby(col_sec)[[col_agua, col_inv]].sum().reset_index()
+    df_top10 = df_top10.sort_values(by=col_agua, ascending=False).head(10)
+
+    # --- GRÁFICO 1: BARRAS HORIZONTALES ---
+    st.subheader(f"📊 Ranking: Los 10 Mayores Consumidores ({anio_sel})")
+    fig_barras = px.bar(
+        df_top10.sort_values(by=col_agua, ascending=True),
+        x=col_agua,
+        y=col_sec,
+        orientation='h',
+        color=col_agua,
         color_continuous_scale='Blues',
-        labels={'consumo_agua_m3': 'Metros Cúbicos (m³)', 'seccion_economica': 'Sector Económico'},
-        text_auto='.2s'
+        text_auto='.2s',
+        labels={col_agua: 'Consumo (m³)', col_sec: 'Sector'}
     )
-    # Ordenar de mayor a menor
-    fig_bar.update_layout(yaxis={'categoryorder':'total ascending'}, height=500)
-    st.plotly_chart(fig_bar, use_container_width=True)
+    fig_barras.update_layout(showlegend=False, height=450)
+    st.plotly_chart(fig_barras, use_container_width=True)
 
-    st.divider() 
+    st.divider()
 
-    # --- GRÁFICO 2: RELACIÓN INVERSIÓN VS CONSUMO (ABAJO) ---
-    st.subheader("📊 Relación Sectorial: Inversión vs. Consumo")
-    st.write(f"Comparativa de cuánto consume cada sector frente a cuánto invierte en el año {anio}.")
+    # --- GRÁFICO 2: BURBUJAS (Inversión vs Consumo) ---
+    st.subheader(f"🔵 Relación: Consumo vs. Inversión Ambiental ({anio_sel})")
+    st.markdown("*El tamaño de la burbuja indica el volumen de agua consumida.*")
     
-    # Usamos el resumen agrupado para asegurar que siempre haya datos visibles
-    fig_scat = px.scatter(
-        resumen_sectores[resumen_sectores['consumo_agua_m3'] > 0], 
-        x='consumo_agua_m3', 
-        y='gasto_gestion_amb', 
-        color='seccion_economica',
-        hover_name='seccion_economica',
-        size='consumo_agua_m3', # El tamaño del punto depende del consumo
-        labels={
-            'consumo_agua_m3': 'Consumo Total (m³)', 
-            'gasto_gestion_amb': 'Inversión Total ($)'
-        },
-        template="plotly_white"
+    fig_burbujas = px.scatter(
+        df_top10,
+        x=col_inv,
+        y=col_agua,
+        size=col_agua,
+        color=col_sec,
+        hover_name=col_sec,
+        size_max=60,
+        labels={col_inv: 'Inversión en Protección ($)', col_agua: 'Consumo de Agua (m³)'}
     )
-    
-    # Ajustamos para que se vea bien si hay valores muy distantes
-    fig_scat.update_traces(marker=dict(line=dict(width=1, color='DarkSlateGrey')))
-    
-    st.plotly_chart(fig_scat, use_container_width=True)
+    fig_burbujas.update_layout(height=500)
+    st.plotly_chart(fig_burbujas, use_container_width=True)
+
+    # Mensaje de conclusión dinámica
+    st.info(f"💡 En {anio_sel}, el sector **{df_top10.iloc[0][col_sec]}** es el mayor consumidor, mientras que el tamaño de las burbujas ayuda a visualizar qué tan proporcional es su inversión.")
 
 else:
-    st.error(f"❌ No se encontró el archivo: {ruta}")
-    st.info("Asegúrate de haber ejecutado el Limpiador Maestro para generar los archivos procesados.")
+    st.warning(f"⚠️ No se encontró el archivo del año {anio_sel} en la carpeta 'data'.")
