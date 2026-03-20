@@ -1,11 +1,25 @@
-# Python
+# --- SEGURIDAD CRÍTICA ---
+# Bloqueamos tus contraseñas personales. 
+# Tus compañeros deberán crear su propio .env si quieren usar su propia DB.
+.env
+.streamlit/secrets.toml
+
+# --- LIMPIEZA DE PYTHON ---
+# Archivos basura que genera Python al ejecutarse
 __pycache__/
 *.py[cod]
 *$py.class
-.venv/
 venv/
+env/
+.venv/
+.pytest_cache/
 
-# Streamlit
-.streamlit/
+# --- ARCHIVOS DE SISTEMA ---
+# Archivos ocultos de Windows o Mac que no sirven para el código
+.DS_Store
+Thumbs.db
+desktop.ini
 
-.env
+# --- NOTA SOBRE LOS DATOS ---
+# NO ignoramos la carpeta /data/ para que tus compañeros 
+# reciban los CSV y el Excel al hacer 'git clone'.

@@ -1,33 +1,37 @@
-import streamlit as st
-from sqlalchemy import create_engine
+import mysql.connector
 import os
+from dotenv import load_dotenv
 
-def obtener_conexion():
-    """Conexión robusta para Talento Tech"""
+# 1. Localizamos las rutas subiendo un nivel (..) desde la carpeta utils
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ENV_PATH = os.path.join(BASE_DIR, '.env')
+CA_PATH = os.path.join(BASE_DIR, 'ca.pem')
+
+# 2. Cargamos las variables de entorno
+load_dotenv(ENV_PATH)
+
+def get_connection():
+    """Establece la conexión con la base de datos MySQL en Aiven."""
     try:
-        # 1. Intentar leer de Secrets (Streamlit Cloud) o Variables de Entorno (Local)
-        user = st.secrets.get("DB_USER") or os.getenv("DB_USER")
-        password = st.secrets.get("DB_PASSWORD") or os.getenv("DB_PASSWORD")
-        host = st.secrets.get("DB_HOST") or os.getenv("DB_HOST")
-        port = st.secrets.get("DB_PORT") or os.getenv("DB_PORT")
-        database = st.secrets.get("DB_NAME") or os.getenv("DB_NAME")
-
-        # 2. VALIDACIÓN CRÍTICA: Si algo es None, poner valores por defecto o avisar
-        if not all([user, password, host, database]):
-            st.warning("⚠️ Configuración incompleta. Revisa los Secrets en Streamlit Cloud.")
-            return None
-        
-        # Forzar el puerto a ser un entero, si falla usa 3306
-        try:
-            port_int = int(port)
-        except (ValueError, TypeError):
-            port_int = 3306
-
-        # 3. CREAR EL ENGINE
-        url = f"mysql+mysqlconnector://{user}:{password}@{host}:{port_int}/{database}"
-        engine = create_engine(url)
-        return engine
-
+        conn = mysql.connector.connect(
+            host=os.getenv('DB_HOST'),
+            port=int(os.getenv('DB_PORT')),
+            user=os.getenv('DB_USER'),
+            password=os.getenv('DB_PASSWORD'),
+            database=os.getenv('DB_NAME'),
+            ssl_ca=CA_PATH,
+            ssl_verify_cert=True
+        )
+        return conn
     except Exception as e:
-        st.error(f"❌ Error crítico de conexión: {e}")
+        print(f"❌ Error crítico de conexión: {e}")
         return None
+
+# Prueba de funcionamiento autónoma
+if __name__ == "__main__":
+    conexion = get_connection()
+    if conexion:
+        print("✅ ¡CONEXIÓN EXITOSA! El puente hacia Aiven está activo.")
+        conexion.close()
+    else:
+        print("❌ No se pudo conectar. Revisa el archivo .env y el ca.pem.")

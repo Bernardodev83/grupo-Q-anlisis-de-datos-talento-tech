@@ -1,38 +1,74 @@
 import pandas as pd
+import os
 import sys
 from pathlib import Path
 
-# Configurar rutas para que encuentre 'utils'
+# --- LOCALIZACIÓN DE LA RAÍZ ---
 ruta_raiz = Path(__file__).resolve().parent.parent
 sys.path.append(str(ruta_raiz))
 
-from utils.conexion import obtener_conexion
+try:
+    from utils.conexion import get_connection
+    print("✅ Conexión con Aiven preparada.")
+except ImportError:
+    print("❌ No se encontró utils/conexion.py")
+    sys.exit(1)
 
-def ejecutar_carga():
-    engine = obtener_conexion()
-    if not engine: return
+def subir_datos_csv():
+    ruta_procesados = os.path.join(ruta_raiz, 'data', 'procesados')
+    archivos = [
+        'datos_2019_final.csv', 'datos_2020_final.csv', 
+        'datos_2021_final.csv', 'datos_2022_final.csv', 
+        'datos_2023_final.csv'
+    ]
+    
+    conn = get_connection()
+    if not conn: return
 
-    folder_proc = ruta_raiz / "data" / "procesados"
-    archivos = list(folder_proc.glob("*.csv"))
-
-    if not archivos:
-        print(f"❌ No hay archivos en {folder_proc}")
-        return
-
-    # Usamos el primer CSV que encuentre el limpiador
-    ruta_csv = archivos[0]
-    print(f"📖 Procesando: {ruta_csv.name}")
-
+    cursor = conn.cursor()
+    
     try:
-        df = pd.read_csv(ruta_csv)
-        # Limpiar nombres de columnas para SQL (quitar espacios)
-        df.columns = [c.replace(' ', '_').lower() for c in df.columns]
-        
-        # Carga masiva
-        df.to_sql('indicadores_ambientales', con=engine, if_exists='replace', index=False, chunksize=500)
-        print(f"✅ ¡ÉXITO! {len(df)} filas cargadas en MariaDB.")
+        for archivo in archivos:
+            ruta_full = os.path.join(ruta_procesados, archivo)
+            
+            if os.path.exists(ruta_full):
+                print(f"⏳ Procesando {archivo}...")
+                df = pd.read_csv(ruta_full).fillna(0)
+                
+                print(f"🚀 Subiendo {len(df)} filas...")
+                
+                # Ajustamos el INSERT para que use los nombres exactos de tus columnas
+                query = """
+                INSERT INTO indicadores_ambientales 
+                (periodo, seccion_economica, consumo_energia_kwh, gasto_gestion_amb, ahorro_agua_m3)
+                VALUES (%s, %s, %s, %s, %s)
+                """
+                
+                for _, row in df.iterrows():
+                    # MAPEANDO TUS COLUMNAS REALES:
+                    valores = (
+                        row['periodo'], 
+                        row['seccion_economica'], 
+                        row['consumo_energia_kwh'],
+                        row['gasto_gestion_amb'],
+                        row['consumo_agua_m3']  # <-- Aquí estaba el error, ya está corregido
+                    )
+                    cursor.execute(query, valores)
+                
+                conn.commit()
+                print(f"✅ {archivo} guardado con éxito.")
+            else:
+                print(f"⚠️ No se encontró: {archivo}")
+
+        print("\n🏆 ¡DATOS CARGADOS! Bernardo, el DANE ya está en tu nube.")
+
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"❌ Error durante la subida: {e}")
+        conn.rollback()
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        conn.close()
+        print("🔌 Conexión cerrada.")
 
 if __name__ == "__main__":
-    ejecutar_carga()
+    subir_datos_csv()

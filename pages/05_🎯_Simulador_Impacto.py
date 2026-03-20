@@ -1,74 +1,138 @@
 import streamlit as st
 import pandas as pd
-from utils.conexion import obtener_conexion
-from sqlalchemy import text
+import plotly.express as px
+import os
+import sys
+from pathlib import Path
 
-st.set_page_config(page_title="Simulador Ambiental", layout="wide")
+# --- 1. CONFIGURACIÓN DE RUTAS ---
+# Esto permite que el script encuentre la carpeta 'utils' desde la carpeta 'pages'
+ruta_raiz = Path(__file__).resolve().parent.parent
+sys.path.append(str(ruta_raiz))
 
+try:
+    from utils.conexion import get_connection
+except ImportError:
+    st.error("❌ No se encontró el módulo de conexión en utils/conexion.py")
+
+# --- 2. CONFIGURACIÓN DE LA PÁGINA ---
+st.set_page_config(
+    page_title="Simulador Ambiental - DANE", 
+    layout="wide", 
+    page_icon="🧮"
+)
+
+# Estética DANE
+url_logo_dane = "https://www.valoraanalitik.com/wp-content/uploads/2018/10/1200px-Colombia_Dane_logo.svg_-696x264.png"
+st.image(url_logo_dane, width=200)
 st.title("🧮 Simulador de Impacto Ambiental")
-st.info("Proyecta el ahorro y la eficiencia basándote en los datos reales de MariaDB.")
+st.info("Proyecta el ahorro y la eficiencia basándote en los datos reales de la industria colombiana cargados en la nube.")
+st.divider()
 
-# 1. CONEXIÓN
-engine = obtener_conexion()
+# --- 3. MOTOR DE SIMULACIÓN (OBTENER PROMEDIOS) ---
+@st.cache_data(ttl=600)
+def obtener_promedios_reales():
+    """Consulta la DB para obtener promedios históricos y alimentar el simulador"""
+    conn = get_connection()
+    if conn:
+        try:
+            cursor = conn.cursor()
+            query = "SELECT AVG(consumo_energia_kwh), AVG(ahorro_agua_m3) FROM indicadores_ambientales"
+            cursor.execute(query)
+            res = cursor.fetchone()
+            cursor.close()
+            conn.close()
+            
+            # Si la DB tiene datos, los usamos. Si no, devolvemos valores base.
+            avg_e = float(res[0]) if res and res[0] else 8500.0
+            avg_a = float(res[1]) if res and res[1] else 450.0
+            return avg_e, avg_a, "✅ Datos basados en promedios reales de la nube (Aiven)"
+        except Exception as e:
+            return 5000.0, 200.0, f"⚠️ Error en consulta: Usando valores de referencia manuales."
+    return 5000.0, 200.0, "⚠️ Modo Offline: Usando valores de referencia (Sin conexión a la nube)"
 
-if engine:
-    try:
-        # 2. OBTENER PROMEDIOS REALES DE LA DB (Para que la simulación sea realista)
-        with engine.connect() as con:
-            query_avg = text("""
-                SELECT AVG(consumo_energia_kwh) as avg_energia, 
-                       AVG(consumo_agua_m3) as avg_agua 
-                FROM indicadores_ambientales
-            """)
-            res = con.execute(query_avg).fetchone()
-            # Si la DB está vacía, usamos valores por defecto
-            avg_energia_db = float(res[0]) if res[0] else 5000.0
-            avg_agua_db = float(res[1]) if res[1] else 200.0
+# Ejecutamos la carga de promedios
+avg_energia_db, avg_agua_db, mensaje_estado = obtener_promedios_reales()
+st.caption(mensaje_estado)
 
-        st.success(f"📈 Base de simulación actualizada según el promedio histórico de la base de datos.")
+# --- 4. INTERFAZ DE USUARIO (COLUMNAS) ---
+col_config, col_metas = st.columns(2)
 
-        # --- INTERFAZ DEL SIMULADOR ---
-        col1, col2 = st.columns(2)
+with col_config:
+    st.subheader("⚙️ Configuración de la Empresa")
+    sector = st.selectbox("Seleccione el Sector Industrial:", [
+        "Manufactura", "Servicios", "Comercio", "Minería", "Alimentos", "Químicos", "Textiles"
+    ])
+    consumo_actual_e = st.number_input(
+        "Consumo de Energía Actual (kWh):", 
+        value=avg_energia_db, 
+        step=100.0,
+        help="Este valor inicia con el promedio histórico de la base de datos."
+    )
+    consumo_actual_a = st.number_input(
+        "Consumo de Agua Actual (m³):", 
+        value=avg_agua_db, 
+        step=10.0
+    )
 
-        with col1:
-            st.subheader("⚙️ Configuración de la Empresa")
-            sector = st.selectbox("Sector Industrial:", ["Manufactura", "Servicios", "Comercio", "Minería"])
-            consumo_actual_e = st.number_input("Consumo Energía Actual (kWh):", value=avg_energia_db)
-            consumo_actual_a = st.number_input("Consumo Agua Actual (m3):", value=avg_agua_db)
+with col_metas:
+    st.subheader("🎯 Metas de Reducción")
+    meta_e = st.slider("% Reducción de Energía deseada:", 0, 50, 15)
+    meta_a = st.slider("% Reducción de Agua deseada:", 0, 50, 10)
+    costo_kwh = st.number_input("Costo promedio por kWh ($COP):", value=650, step=10)
 
-        with col2:
-            st.subheader("🎯 Metas de Reducción")
-            meta_e = st.slider("% Reducción Energía:", 0, 50, 15)
-            meta_a = st.slider("% Reducción Agua:", 0, 50, 10)
+# --- 5. LÓGICA DE CÁLCULO ---
+ahorro_e_anual = (consumo_actual_e * (meta_e / 100)) * 12
+ahorro_a_anual = (consumo_actual_a * (meta_a / 100)) * 12
+dinero_ahorrado_anual = ahorro_e_anual * costo_kwh
 
-        # --- CÁLCULOS ---
-        ahorro_e = consumo_actual_e * (meta_e / 100)
-        ahorro_a = consumo_actual_a * (meta_a / 100)
-        
-        # Supongamos un costo promedio (puedes ajustarlo)
-        costo_kwh = 650 
-        dinero_ahorrado = ahorro_e * costo_kwh
+st.divider()
 
-        st.divider()
+# --- 6. RENDERIZADO DE RESULTADOS ---
+st.subheader("🚀 Proyección de Impacto Anual")
+m1, m2, m3 = st.columns(3)
 
-        # --- RESULTADOS ---
-        st.subheader("🚀 Proyección de Resultados")
-        res1, res2, res3 = st.columns(3)
-        
-        res1.metric("Energía a Ahorrar", f"{ahorro_e:,.2f} kWh", f"-{meta_e}%", delta_color="normal")
-        res2.metric("Agua a Ahorrar", f"{ahorro_a:,.2f} m3", f"-{meta_a}%", delta_color="normal")
-        res3.metric("Ahorro Estimado ($)", f"$ {dinero_ahorrado:,.0f}", help="Basado en costo promedio de kWh")
+with m1:
+    st.metric("Energía a Ahorrar (Año)", f"{ahorro_e_anual:,.1f} kWh", f"-{meta_e}%")
+with m2:
+    st.metric("Agua a Ahorrar (Año)", f"{ahorro_a_anual:,.1f} m³", f"-{meta_a}%")
+with m3:
+    st.metric("Ahorro Económico Est.", f"$ {dinero_ahorrado_anual:,.0f}", help="Cálculo basado en ahorro de energía")
 
-        # Gráfico comparativo
-        st.write("### Comparativa: Actual vs Meta")
-        data_sim = pd.DataFrame({
-            'Concepto': ['Energía (kWh)', 'Agua (m3)'],
-            'Actual': [consumo_actual_e, consumo_actual_a],
-            'Meta': [consumo_actual_e - ahorro_e, consumo_actual_a - ahorro_a]
-        })
-        st.bar_chart(data_sim.set_index('Concepto'))
+# --- 7. GRÁFICO COMPARATIVO (PLOTLY) ---
+st.write("### 📊 Comparativa Visual: Situación Actual vs. Meta")
 
-    except Exception as e:
-        st.error(f"❌ Error al cargar datos para el simulador: {e}")
-else:
-    st.error("❌ No hay conexión con MariaDB para obtener los promedios.")
+# Creamos un DataFrame para graficar
+df_plot = pd.DataFrame({
+    'Indicador': ['Energía (kWh)', 'Agua (m³)'],
+    'Actual': [consumo_actual_e, consumo_actual_a],
+    'Meta': [consumo_actual_e * (1 - meta_e/100), consumo_actual_a * (1 - meta_a/100)]
+})
+
+# Reorganizamos los datos para que Plotly los entienda bien (Melt)
+df_melted = df_plot.melt(id_vars='Indicador', var_name='Escenario', value_name='Valor')
+
+fig_sim = px.bar(
+    df_melted, 
+    x='Indicador', 
+    y='Valor', 
+    color='Escenario', 
+    barmode='group',
+    color_discrete_map={'Actual': '#BDC3C7', 'Meta': '#27AE60'}, # Gris vs Verde
+    text_auto='.2s',
+    template="plotly_white"
+)
+
+fig_sim.update_layout(
+    height=400, 
+    margin=dict(t=20, b=20, l=20, r=20),
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+)
+
+st.plotly_chart(fig_sim, use_container_width=True)
+
+# Conclusión dinámica final
+st.success(f"""
+    💡 **Conclusión del Simulador:** Si el sector de **{sector}** implementa estas metas, lograría un ahorro económico de 
+    **$ {dinero_ahorrado_anual:,.0f} COP** al año, mejorando significativamente su Índice de Desempeño Ambiental (ICA).
+""")

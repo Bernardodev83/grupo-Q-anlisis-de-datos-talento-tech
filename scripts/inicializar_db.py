@@ -2,27 +2,29 @@ import sys
 import os
 from pathlib import Path
 
-# --- ESTO ES LO QUE SOLUCIONA EL ERROR ---
-# Obtenemos la ruta de la carpeta raíz (proyecto ambiental DANE)
+# --- LOCALIZACIÓN DE LA RAÍZ ---
+# Esto permite que el script encuentre la carpeta 'utils'
 ruta_raiz = Path(__file__).resolve().parent.parent
 sys.path.append(str(ruta_raiz))
-# -----------------------------------------
 
 try:
-    from utils.conexion import obtener_conexion
-    from sqlalchemy import text
-    print("✅ Módulo 'utils' detectado correctamente.")
+    # Importamos la nueva función 'get_connection' que creamos en el Paso 1
+    from utils.conexion import get_connection
+    print("✅ Módulo 'utils' y función 'get_connection' detectados.")
 except ImportError as e:
     print(f"❌ Error al importar: {e}")
     sys.exit(1)
 
 def crear_estructura_tablas():
-    engine = obtener_conexion()
-    if not engine:
-        print("❌ No se pudo obtener la conexión.")
+    # Obtenemos la conexión directa de mysql-connector
+    conn = get_connection()
+    
+    if not conn:
+        print("❌ No se pudo establecer la conexión con Aiven.")
         return
 
-    # Definición de la tabla (Ajustada a tus requerimientos)
+    # Definición de la tabla principal
+    # Mantenemos tus columnas: periodo, seccion, energia, gasto y agua
     query_crear_tabla = """
     CREATE TABLE IF NOT EXISTS indicadores_ambientales (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -36,13 +38,25 @@ def crear_estructura_tablas():
     """
 
     try:
-        with engine.connect() as con:
-            # SQLAlchemy 2.0 requiere que las ejecuciones de texto sean explícitas
-            con.execute(text(query_crear_tabla))
-            # Importante: algunas versiones requieren con.commit() si no es autocommit
-            print("✅ Estructura de MariaDB verificada/creada exitosamente.")
+        cursor = conn.cursor()
+        print("⏳ Verificando estructura en la nube de Aiven...")
+        
+        # Ejecutamos la creación
+        cursor.execute(query_crear_tabla)
+        
+        # En MySQL es buena práctica asegurar el commit
+        conn.commit()
+        
+        print("✅ ¡Estructura de la base de datos creada exitosamente en Aiven!")
+        
     except Exception as e:
         print(f"❌ Error al crear la tabla: {e}")
+    finally:
+        # Cerramos siempre el cursor y la conexión
+        if 'cursor' in locals():
+            cursor.close()
+        conn.close()
+        print("🔌 Conexión cerrada.")
 
 if __name__ == "__main__":
     crear_estructura_tablas()
