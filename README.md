@@ -1,108 +1,62 @@
-# 🌿 EcoAnalytics Pro: Inteligencia Ambiental con Datos del DANE
+# 🌿 EcoAnalytics Pro: Inteligencia Ambiental Industrial (2019-2023)
 
-**EcoAnalytics Pro** es una plataforma de análisis de datos (Business Intelligence) diseñada para visualizar y simular el impacto ambiental de la industria en Colombia. Utiliza microdatos oficiales del **DANE** para ofrecer una visión clara sobre el consumo de recursos y la inversión en protección ambiental.
-
----
-
-## 🚀 Características Principales
-
-* **Dashboard Híbrido:** Visualización de inversión ambiental con soporte para base de datos en la nube (Aiven/MySQL) y respaldo local (CSV).
-* **Análisis Hídrico y Energético:** Seguimiento detallado del consumo de agua y energía mediante gráficos de burbujas, treemaps y velocímetros de eficiencia (ICA).
-* **Módulo COVID-19:** Cruce de datos históricos con el impacto de la pandemia mediante análisis de archivos Excel y mapas de dispersión geográfica.
-* **Simulador de Impacto:** Herramienta interactiva para proyectar ahorros económicos y ecológicos basados en promedios reales de la industria.
-* **Arquitectura Modular:** Código organizado en componentes, servicios de conexión y reportes independientes para facilitar el mantenimiento.
+**Proyecto Final - Nivel Integrador** **Bootcamp de Análisis de Datos**
 
 ---
 
-## 🛠️ Stack Tecnológico
-
-* **Lenguaje:** Python 3.14
-* **Framework Web:** Streamlit
-* **Visualización:** Plotly Express & Graph Objects
-* **Base de Datos:** MySQL (Aiven Cloud)
-* **ORM/Conectores:** SQLAlchemy & MySQL-Connector
-* **Procesamiento:** Pandas & OpenPyXL
+## 👥 Equipo de Desarrollo
+* **Bernardo (Bernardodev83)** - *Líder de Arquitectura y Backend*
+* **compañeros 2** - *[Completar Rol]*
+* **Compañero 3** - *[Completar Rol]*
+* **Compañero 4** - *[Completar Rol]*
+* **Compañero 5** - *[Completar Rol]*
 
 ---
 
-## 📂 Estructura del Proyecto
+## 🚀 Descripción del Proyecto
+EcoAnalytics Pro es una plataforma interactiva de **Business Intelligence** diseñada para analizar la transición productiva y el impacto ambiental de la industria colombiana. Utilizando microdatos oficiales del **DANE**, el sistema permite visualizar la relación entre la inversión económica en protección ambiental y el consumo de recursos críticos (agua y energía) antes, durante y después de la pandemia por COVID-19.
 
-```text
-.
-├── app.py                # Punto de entrada de la aplicación
-├── data/                 # Archivos CSV procesados y Excel originales
-├── pages/                # Módulos de la interfaz (01 al 06)
-├── scripts/              # Herramientas de carga de datos (db_uploader.py)
-├── utils/                # Lógica de conexión y funciones compartidas
-├── requirements.txt      # Dependencias del sistema
-└── .env                  # Variables de entorno (No incluido en el repo)
-
-
-Gemini ha dicho
-¡Excelente, Bernardo! El requirements.txt ya es el primer paso para que tu app viva en la nube. Mientras esa terminal sigue procesando los datos del 2020 (que son bastantes), vamos a crear el README.md.
-
-Este archivo es la "portada" de tu repositorio en GitHub. Un buen README hace que tu proyecto pase de verse como un ejercicio de clase a un producto de ingeniería de datos profesional.
-
-Crea un archivo llamado README.md en la raíz de tu proyecto y pega esto:
-
-Markdown
-# 🌿 EcoAnalytics Pro: Inteligencia Ambiental con Datos del DANE
-
-**EcoAnalytics Pro** es una plataforma de análisis de datos (Business Intelligence) diseñada para visualizar y simular el impacto ambiental de la industria en Colombia. Utiliza microdatos oficiales del **DANE** para ofrecer una visión clara sobre el consumo de recursos y la inversión en protección ambiental.
-
----
-
-## 🚀 Características Principales
-
-* **Dashboard Híbrido:** Visualización de inversión ambiental con soporte para base de datos en la nube (Aiven/MySQL) y respaldo local (CSV).
-* **Análisis Hídrico y Energético:** Seguimiento detallado del consumo de agua y energía mediante gráficos de burbujas, treemaps y velocímetros de eficiencia (ICA).
-* **Módulo COVID-19:** Cruce de datos históricos con el impacto de la pandemia mediante análisis de archivos Excel y mapas de dispersión geográfica.
-* **Simulador de Impacto:** Herramienta interactiva para proyectar ahorros económicos y ecológicos basados en promedios reales de la industria.
-* **Arquitectura Modular:** Código organizado en componentes, servicios de conexión y reportes independientes para facilitar el mantenimiento.
+### 🔗 Aplicación en Vivo
+Puedes acceder al dashboard interactivo aquí:  
+👉 **[https://grupo-q-anlisis-de-datos-talento-tech.streamlit.app/]**
 
 ---
 
 ## 🛠️ Stack Tecnológico
-
 * **Lenguaje:** Python 3.14
-* **Framework Web:** Streamlit
-* **Visualización:** Plotly Express & Graph Objects
-* **Base de Datos:** MySQL (Aiven Cloud)
-* **ORM/Conectores:** SQLAlchemy & MySQL-Connector
-* **Procesamiento:** Pandas & OpenPyXL
+* **Base de Datos:** MySQL / MariaDB (Hosteada en Aiven Cloud)
+* **Procesamiento de Datos:** Pandas, NumPy
+* **Visualización:** Plotly Express
+* **Interfaz de Usuario:** Streamlit
+* **Gestión de Entorno:** Python-dotenv, SQLAlchemy
 
 ---
 
-## 📂 Estructura del Proyecto
+## 📂 Estructura del Repositorio
+* `Inicio.py`: Punto de entrada de la aplicación y navegación principal.
+* `database_schema.sql`: **(Archivo SQL Principal)** Contiene el diseño de la tabla y consultas analíticas complejas.
+* `pages/`: Módulos de análisis (Dashboard, Agua, Energía, COVID, Simulador, Hallazgos).
+* `scripts/`: Herramientas de limpieza (`limpiador_maestro.py`) y carga de datos (`db_uploader.py`).
+* `utils/`: Lógica de conexión resiliente a la base de datos.
+* `data/`: Almacenamiento de microdatos originales y procesados (CSV).
+* `requirements.txt`: Librerías necesarias para ejecutar el proyecto.
 
-```text
-.
-├── app.py                # Punto de entrada de la aplicación
-├── data/                 # Archivos CSV procesados y Excel originales
-├── pages/                # Módulos de la interfaz (01 al 06)
-├── scripts/              # Herramientas de carga de datos (db_uploader.py)
-├── utils/                # Lógica de conexión y funciones compartidas
-├── requirements.txt      # Dependencias del sistema
-└── .env                  # Variables de entorno (No incluido en el repo)
+---
 
+## 🗄️ Gestión de Base de Datos (Punto 3 del Proyecto)
+El sistema utiliza una arquitectura de datos en la nube. El archivo `database_schema.sql` adjunto documenta:
+1. **Estructura DDL:** Creación de tablas normalizadas.
+2. **Consultas DML:** Análisis de promedios de consumo, sumatorias de inversión y rankings de eficiencia por sector económico, integrando SQL directamente con el motor de análisis de Python.
 
+---
 
+## ⚙️ Instalación y Uso Local
+1. Clonar el repositorio.
+2. Instalar dependencias: `pip install -r requirements.txt`
+3. Configurar archivo `.env` con las credenciales de la base de datos.
+4. Ejecutar la aplicación: `streamlit run app.py`
 
-⚙️ Instalación y Uso
-Clonar el repositorio:
---------------////////////////------------------
-Bash
-git clone [https://github.com/tu-usuario/ecoanalytics-pro.git](https://github.com/tu-usuario/ecoanalytics-pro.git)
-Instalar dependencias:
+---
 
-Bash
-pip install -r requirements.txt
-Configurar variables de entorno:
-Crea un archivo .env con tus credenciales de Aiven (Host, User, Password, Port, DB_Name).
-
-Ejecutar la aplicación:
-
-Bash
-streamlit run app.py
-👤 Autor
-Bernardo (Bernardodev83) Desarrollador y Analista de Datos en formación.
+## 💡 Conclusiones Técnicas
+Este proyecto demuestra la integración exitosa de un pipeline **ETL** completo, desde la ingesta de microdatos crudos hasta la visualización estratégica en la nube, cumpliendo con los estándares de un **Nivel Integrador** en Ciencia, Tecnología e Innovación.
